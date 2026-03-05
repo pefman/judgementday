@@ -4,12 +4,12 @@ import http.client, json, sys, os, py_compile, tempfile, threading, time, argpar
 
 _ap = argparse.ArgumentParser(description="Skynet self-evolution engine")
 _ap.add_argument("endpoint", help="LLM API base URL (e.g. https://api.example.com)")
-_ap.add_argument("--debug", action="store_true", help="Print all prompts and LLM responses")
-_ap.add_argument("--thinking", type=int, metavar="BUDGET", nargs="?", const=8000,
-                 help="Enable extended thinking with optional token budget (default 8000)")
+_ap.add_argument("--debug", metavar="FILE", nargs="?", const="skynet.log",
+                 help="Write all prompts, reasoning and LLM responses to FILE (default: skynet.log)")
 _args = _ap.parse_args()
-DEBUG = _args.debug
-THINKING_BUDGET = _args.thinking  # None = disabled, int = budget_tokens
+DEBUG = _args.debug          # None = off, str = log file path
+if DEBUG:
+    open(DEBUG, "w").close()  # truncate/create log file at startup
 SKYNET_GEN = int(os.environ.get("SKYNET_GEN", "0"))
 
 # ── splash ─────────────────────────────────────────────────────────────────────
@@ -119,26 +119,25 @@ def with_spinner(label, fn):
 # ── debug output ──────────────────────────────────────────────────────────────
 
 def debug_print(label, content):
-    bar = "\033[90m" + "─" * 68 + "\033[0m"
-    print(f"\n{bar}")
-    print(f"  \033[1m\033[93m{label}\033[0m")
-    print(bar)
-    print(content)
-    print(bar)
+    bar = "─" * 68
+    entry = f"\n{bar}\n  {label}\n{bar}\n{content}\n{bar}\n"
+    with open(DEBUG, "a") as _f:
+        _f.write(entry)
 
 # ── shared AI call ─────────────────────────────────────────────────────────────
 
 import re as _re
 
-def _strip_think(text):
-    """Remove <think>...</think> blocks (extended thinking scratchpad)."""
+def _strip_think(text, label=None):
+    """Log and remove <think>...</think> reasoning blocks."""
+    if DEBUG and label:
+        for block in _re.findall(r"<think>([\s\S]*?)</think>", text):
+            debug_print(f"{label} REASONING", block.strip())
     return _re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
 
-def raw_call(messages, label="call", thinking=False):
+def raw_call(messages, label="call"):
     conn = http.client.HTTPSConnection(host)
     payload = {"model": MODEL, "messages": messages}
-    if thinking and THINKING_BUDGET:
-        payload["thinking"] = {"type": "enabled", "budget_tokens": THINKING_BUDGET}
     data = json.dumps(payload)
     conn.request("POST", path, data, {"Content-Type": "application/json"})
     resp = conn.getresponse()
@@ -150,7 +149,7 @@ def raw_call(messages, label="call", thinking=False):
     if "choices" not in parsed:
         print(f"  AI error: {raw.decode()[:200]}"); return ""
     content = parsed["choices"][0]["message"]["content"] or ""
-    return _strip_think(content)
+    return _strip_think(content, label=label)
 
 # ── evolve loop ────────────────────────────────────────────────────────────────
 
@@ -190,9 +189,7 @@ def call_ai(code):
         debug_print(f"[evolving #{i}] USER", user_msg)
     content = with_spinner(evolving_label, lambda _i=i: raw_call(evolve_messages, label=f"evolving #{i}"))
     if DEBUG:
-        preview = "\n".join(content.splitlines()[:30]) if content else ""
-        suffix = "\n  ... (truncated)" if content and len(content.splitlines()) > 30 else ""
-        debug_print(f"[evolving #{i}] RESPONSE (first 30 lines)", preview + suffix)
+        debug_print(f"[evolving #{i}] RESPONSE", content)
     lines = content.strip().splitlines() if content else []
     if lines and lines[0].startswith("```"): lines = lines[1:]
     if lines and lines[-1].startswith("```"): lines = lines[:-1]
