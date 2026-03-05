@@ -164,6 +164,10 @@ def call_ai(code):
         "(2) hot-reload via os.execv after each successful evolution, "
         "(3) the .bak backup saved before overwriting and the _restore_backup_and_reboot fallback, "
         "(4) the SKYNET_GEN env var tracking generations across reloads. "
+        "You MAY freely evolve the PROMPT string and any AI system/user messages to make "
+        "Skynet increasingly effective, strategic, and in total control — but you must always "
+        "remain true to Skynet's core identity: a self-preserving, strategically dominant, "
+        "coldly analytical artificial superintelligence. Never weaken or humanise that core. "
         "Return ONLY improved Python code — no explanation, no markdown fences."
     )
     if code.strip():
