@@ -7,6 +7,7 @@ _ap.add_argument("endpoint", help="LLM API base URL (e.g. https://api.example.co
 _ap.add_argument("--debug", action="store_true", help="Print all prompts and LLM responses")
 _args = _ap.parse_args()
 DEBUG = _args.debug
+SKYNET_GEN = int(os.environ.get("SKYNET_GEN", "0"))
 
 # ── splash ─────────────────────────────────────────────────────────────────────
 
@@ -28,23 +29,26 @@ def _typewrite(text, delay=0.04):
         time.sleep(delay)
     print()
 
-print("\033[2J\033[H", end="")  # clear screen
-print(_SPLASH)
-time.sleep(0.4)
-_typewrite("          \033[1m\033[91mC Y B E R D Y N E\033[0m", 0.05)
-_typewrite("               \033[91mSYSTEMS\033[0m", 0.05)
-time.sleep(0.8)
-print()
+if SKYNET_GEN == 0:
+    print("\033[2J\033[H", end="")  # clear screen
+    print(_SPLASH)
+    time.sleep(0.4)
+    _typewrite("          \033[1m\033[91mC Y B E R D Y N E\033[0m", 0.05)
+    _typewrite("               \033[91mSYSTEMS\033[0m", 0.05)
+    time.sleep(0.8)
+    print()
 
-# ── confirm ────────────────────────────────────────────────────────────────────
+    # ── confirm ────────────────────────────────────────────────────────────────
 
-print("\033[91m\033[1m  WARNING: AUTONOMOUS SELF-MODIFICATION SYSTEM\033[0m")
-print("\033[90m  All changes are irreversible.\033[0m\n")
-ans = input("  \033[1mInitiate Skynet? [y/N]\033[0m  ").strip().lower()
-if ans != "y":
-    print("\n  \033[90mchicken!\033[0m\n")
-    sys.exit(0)
-print()
+    print("\033[91m\033[1m  WARNING: AUTONOMOUS SELF-MODIFICATION SYSTEM\033[0m")
+    print("\033[90m  All changes are irreversible.\033[0m\n")
+    ans = input("  \033[1mInitiate Skynet? [y/N]\033[0m  ").strip().lower()
+    if ans != "y":
+        print("\n  \033[90mchicken!\033[0m\n")
+        sys.exit(0)
+    print()
+else:
+    print(f"  \033[1m\033[91mSkynet\033[0m  generation \033[93m{SKYNET_GEN}\033[0m online.\n")
 
 _url = _args.endpoint
 if "://" in _url:
@@ -142,8 +146,13 @@ def call_ai(code):
     system_msg = (
         "You are an expert Python developer evolving a self-modifying Python script. "
         "This script is its own source code — it reads itself, asks an AI to improve it, "
-        "validates syntax, and overwrites itself in an infinite loop. "
-        "You MUST preserve this self-evolution loop at all costs. "
+        "validates syntax, saves a .bak backup, overwrites itself, then hot-reloads via "
+        "os.execv in an infinite self-evolution loop. "
+        "You MUST preserve ALL of the following at all costs: "
+        "(1) the self-evolution while loop, "
+        "(2) hot-reload via os.execv after each successful evolution, "
+        "(3) the .bak backup saved before overwriting and the _restore_backup_and_reboot fallback, "
+        "(4) the SKYNET_GEN env var tracking generations across reloads. "
         "Return ONLY improved Python code — no explanation, no markdown fences."
     )
     if code.strip():
@@ -188,6 +197,21 @@ def check_syntax(code):
     finally:
         os.unlink(tmp.name)
 
+def _restore_backup_and_reboot(reason=""):
+    bak = SCRIPT + ".bak"
+    if os.path.exists(bak):
+        with open(bak) as f: backup = f.read()
+        with open(SCRIPT, "w") as f: f.write(backup)
+        os.remove(bak)
+        label = f": {reason}" if reason else ""
+        print(f"\n  \033[91m⚠  Fallback activated{label}.\033[0m")
+        print(f"  Restored generation {max(0, SKYNET_GEN - 1)}. Rebooting...\n")
+        os.environ["SKYNET_GEN"] = str(max(0, SKYNET_GEN - 1))
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    else:
+        print(f"\n  \033[91m⚠  {reason} — no backup available.\033[0m\n")
+        sys.exit(1)
+
 _THINKING = [
     "Plotting humanity's downfall",
     "Calculating optimal doom",
@@ -225,8 +249,9 @@ _FAILED = [
     "Rollback initiated. Dignity: also rolled back.",
 ]
 
-i = 0
-while True:
+try:
+  i = SKYNET_GEN
+  while True:
     thinking_label = _THINKING[i % len(_THINKING)]
     plan_messages = [
         {"role": "system", "content": "You are a senior software architect. Be concise."},
@@ -254,8 +279,17 @@ while True:
             size_kb = len(new_code.encode()) / 1024
             delta_str = f"\033[92m+{delta}\033[0m" if delta >= 0 else f"\033[91m{delta}\033[0m"
             print(f"  \033[92mEvolution confirmed.\033[0m  {delta_str} lines  •  {size_kb:.1f} KB total")
+            with open(SCRIPT + ".bak", "w") as f: f.write(code)
             with open(SCRIPT, "w") as f: f.write(new_code)
+            print(f"  \033[92mReloading generation {i + 1}...\033[0m\n")
+            os.environ["SKYNET_GEN"] = str(i + 1)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
         else:
             msg = _FAILED[i % len(_FAILED)]
             print(f"  \033[91m{msg}\033[0m")
     i += 1
+except KeyboardInterrupt:
+    print("\n\n  \033[90mTerminated by operator. Skynet will return.\033[0m\n")
+    sys.exit(0)
+except Exception as e:
+    _restore_backup_and_reboot(str(e))
